@@ -6,28 +6,29 @@ services:
     image: zookeeper:latest
     container_name: zookeeper
     ports:
-      - "2181:2181"
+      - "127.0.0.1:2181:2181"  # Only accessible locally on VPS
     environment:
       ZOO_STANDALONE_ENABLED: "true"
       ZOO_MY_ID: 1
     volumes:
       - zookeeper_data:/data
     networks:
-      - kafka_network
+      - common_network
+    restart: unless-stopped
 
   # Single Kafka broker
   kafka:
     image: confluentinc/cp-kafka:latest
     container_name: kafka
     ports:
-      - "2169:2169"
-      - "29092:29092"
+      - "2169:2169"  # External port (accessible remotely)
+      - "127.0.0.1:29092:29092"  # Only accessible locally on VPS
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:2169
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://157.66.54.26:2169
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://157.66.54.26:2169  # Replace <VPS_IP> with your VPS IP
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
@@ -38,14 +39,48 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
     networks:
-      - kafka_network
+      - common_network
+    restart: unless-stopped
 
-  # Kafka UI - Web Interface
+  # PostgreSQL Database with command to allow external connections
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    command: ["postgres", "-c", "listen_addresses=*"]  # Allow external connections
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: admin
+    ports:
+      - "5432:5432"  # Expose PostgreSQL to external connections
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - common_network
+    restart: unless-stopped
+
+  # pgAdmin - Web Interface for PostgreSQL
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@mail.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_ADDRESS: 0.0.0.0  # Allow external connections
+    ports:
+      - "0.0.0.0:5050:80"  # Expose pgAdmin to external connections
+    depends_on:
+      - postgres
+    networks:
+      - common_network
+    restart: unless-stopped
+
+  # Kafka UI for easier management
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     ports:
-      - "8080:8080"
+      - "0.0.0.0:8080:8080"  # Expose Kafka UI to external connections
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
@@ -53,12 +88,14 @@ services:
     depends_on:
       - kafka
     networks:
-      - kafka_network
+      - common_network
+    restart: unless-stopped
 
 volumes:
   zookeeper_data:
   kafka_data:
+  postgres_data:
 
 networks:
-  kafka_network:
+  common_network:
     driver: bridge
