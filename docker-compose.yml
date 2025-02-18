@@ -55,6 +55,7 @@ services:
       - "5432:5432"  # Expose PostgreSQL to external connections
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./AdventureWorks-for-Postgres:/docker-entrypoint-initdb.d  # Mount the directory with CSV
     networks:
       - common_network
     restart: unless-stopped
